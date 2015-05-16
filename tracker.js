@@ -9,6 +9,7 @@ logger.debug('Hasnhnest client set up');
 
 var fs = require('fs');
 var dirRaw = 'raw';
+var dirIntra = 'intraday';
 
 var interval = 60000;
 
@@ -20,6 +21,13 @@ fs.exists(dirRaw, function(exists) {
 	if(!exists)
 		fs.mkdir(dirRaw, function(err) {
 			logger.debug('Directory ' + dirRaw + ' created.');
+		});
+	});
+
+fs.exists(dirIntra, function(exists) {
+	if(!exists)
+		fs.mkdir(dirIntra, function(err) {
+			logger.debug('Directory ' + dirIntra + ' created.');
 		});
 	});
 		
@@ -107,21 +115,57 @@ function logOrders(from, until) {
 	}
 
 	var rawBuffer = '';
+	var intraBuffer = '';
 	var t = orders[0].created_at.getTime();
 	var day = thisDay(t);
 
 	while((t < until.getTime()) && orders.length) {
 		// determine the day of the sample
 		var nextMinute = thisMinute(t) + 1000 * 60;	// next minute, zero sec/millis
+		var d = new Date(t);
+		var ohlc = {
+			ticker : market,
+			per : 'I',
+			date : formatDay(d),
+			time : formatTime(d),
+			open : 0,
+			high : 0,
+			low : -1,
+			close : 0,
+			vol : 0
+		}
 		
 		while((t < nextMinute) && orders.length) {
 			logger.debug('Buffering %d,%d,%d,%s', orders[0].ppc, orders[0].amount, orders[0].total_price, orders[0].created_at.toISOString());
+
 			rawBuffer += (orders[0].ppc + ',' + orders[0].amount + ',' + orders[0].total_price + ',' + orders[0].created_at.toISOString() + '\n');
+
+			ppc = Number(orders[0].ppc);
+			amount = Number(orders[0].amount);
+			if(ohlc.open == 0)
+				ohlc.open = ppc;
+			if(ohlc.high < ppc)
+				ohlc.high = ppc;
+			if((ohlc.low < 0) || (ohlc.low > ppc))
+				ohlc.low = ppc;
+			ohlc.close = ppc;
+			ohlc.vol += amount;
+			
 			orders.shift();
 			if(orders.length)
 				t = orders[0].created_at.getTime();
-
-		// buffer contains all entries from the currently processed minute
+		}
+		
+		// bump up the values so that they have max 2 decimal points
+		ohlc.open *= 1E6;
+		ohlc.high *= 1E6;
+		ohlc.low *= 1E6;
+		ohlc.close *= 1E6;
+		intraBuffer += (ohlc.ticker + ',' + ohlc.per + ',' + ohlc.date + ',' + ohlc.time + ',' +
+			ohlc.open.toFixed(2) + ',' + ohlc.high.toFixed(2) + ',' + ohlc.low.toFixed(2) + ',' + 
+			ohlc.close.toFixed(2) + ',' + ohlc.vol.toFixed(0) + '\n');
+			
+		// buffers contain all entries from the currently processed minute
 		// if day changes, flush the buffer
 		if(orders.length && (day != thisDay(t))) {
 			logger.debug('Writing buffer on a day change');
@@ -133,7 +177,6 @@ function logOrders(from, until) {
 	}
 	
 	writeRawData(day, rawBuffer);
-
 	logger.debug('Logging orders done');	
 }
 
