@@ -168,15 +168,18 @@ function logOrders(from, until) {
 		// buffers contain all entries from the currently processed minute
 		// if day changes, flush the buffer
 		if(orders.length && (day != thisDay(t))) {
-			logger.debug('Writing buffer on a day change');
+			logger.debug('Writing buffers out on a day change');
 			writeRawData(day, rawBuffer);
 			rawBuffer = '';
+			writeIntradayData(day, intraBuffer);
+			intraBuffer = '';
 			day = thisDay(t);
-			}
 		}
 	}
 	
 	writeRawData(day, rawBuffer);
+	writeIntradayData(day, intraBuffer);
+	
 	logger.debug('Logging orders done');	
 }
 
@@ -200,6 +203,26 @@ function writeRawData(d, buffer) {
 	fileWriteStream.end();
 }
 
+function writeIntradayData(d, buffer) {
+
+	if(!buffer.length) {
+		logger.debug('writeIntradayData called with empty buffer, nothing to write.');
+		return;
+	}
+	
+	var day = formatDay(new Date(d));
+	logger.debug('%s:', day);
+	logger.debug(buffer);
+	
+	var options = { encoding : 'utf8', flags : 'a' }
+	var fileWriteStream = fs.createWriteStream('./' + dirIntra + '/' + day + '.txt', options);
+	fileWriteStream.on("close", function(){
+		logger.debug('File ./' + dirIntra + '/' + day + '.txt closed.');
+	});
+	fileWriteStream.write(buffer);
+	fileWriteStream.end();
+}
+
 // takes a time in millis and returns time in millis that is set at the beginning of the minute (xx:xx:00.000)
 function thisMinute(millis) {
 	var minute = 1000 * 60;	// 1 minute in millis
@@ -214,6 +237,10 @@ function thisDay(millis) {
 
 function formatDay(t) {
 	return t.getUTCFullYear() + addZero(t.getUTCMonth() + 1) + addZero(t.getUTCDate());
+}
+
+function formatTime(t) {
+	return addZero(t.getUTCHours()) + ':' + addZero(t.getUTCMinutes());
 }
 
 function addZero(i) {
