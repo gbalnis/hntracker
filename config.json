@@ -1,0 +1,9 @@
+{
+	"defaultLogLevel" : "error",
+	"dirRaw" : "./raw",
+	"dirIntra" : "./intraday",
+	"outFileExt" : ".txt",
+	"apiReqInterval" : "60000",
+	"orderProcessInterval" : "200000",
+	"market" : "ANTS5/BTC"
+}

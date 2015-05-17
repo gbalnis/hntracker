@@ -1,6 +1,7 @@
+var config = require('./config.json');
 var args = process.argv.slice(2);
 var logger = require('winston');
-logger.level = (args.length ? args[0] : 'error');	// priority: debug, info, warn, error
+logger.level = (args.length ? args[0] : config.defaultLogLevel);	// priority: debug, info, warn, error
 logger.exitOnError = false;
 logger.debug('Logger set up to ' + logger.level);
 
@@ -8,26 +9,22 @@ var hn = require('hashnest');
 logger.debug('Hasnhnest client set up');
 
 var fs = require('fs');
-var dirRaw = 'raw';
-var dirIntra = 'intraday';
 
-var interval = 60000;
-
-var market = 'ANTS5/BTC';
+var market = config.market;
 var marketId;
 var orders = [];
 
-fs.exists(dirRaw, function(exists) {
+fs.exists(config.dirRaw, function(exists) {
 	if(!exists)
-		fs.mkdir(dirRaw, function(err) {
-			logger.debug('Directory ' + dirRaw + ' created.');
+		fs.mkdir(config.dirRaw, function(err) {
+			logger.debug('Directory ' + config.dirRaw + ' created.');
 		});
 	});
 
-fs.exists(dirIntra, function(exists) {
+fs.exists(config.dirIntra, function(exists) {
 	if(!exists)
-		fs.mkdir(dirIntra, function(err) {
-			logger.debug('Directory ' + dirIntra + ' created.');
+		fs.mkdir(config.dirIntra, function(err) {
+			logger.debug('Directory ' + config.dirIntra + ' created.');
 		});
 	});
 		
@@ -40,8 +37,10 @@ hn.getCurrencyMarkets(function(data) {
 		}
 		if(m >= 0) {
 			marketId = m;
-			setInterval(pullOrders, interval);
-			setInterval(processOrders, interval * 2);
+			logger.debug('Setting API request interval to ' + config.apiReqInterval + ' ms.');
+			setInterval(pullOrders, config.apiReqInterval);
+			logger.debug('Setting orders processing interval to ' + config.orderProcessInterval + ' ms.');
+			setInterval(processOrders, config.orderProcessInterval);
 		}
 	});
 
@@ -194,10 +193,11 @@ function writeRawData(d, buffer) {
 	logger.debug('%s:', day);
 	logger.debug(buffer);
 	
+	var path = config.dirRaw + '/' + day + config.outFileExt;
 	var options = { encoding : 'utf8', flags : 'a' }
-	var fileWriteStream = fs.createWriteStream('./' + dirRaw + '/' + day + '.txt', options);
+	var fileWriteStream = fs.createWriteStream(path, options);
 	fileWriteStream.on("close", function(){
-		logger.debug('File ./' + dirRaw + '/' + day + '.txt closed.');
+		logger.debug('File ' + path + ' closed.');
 	});
 	fileWriteStream.write(buffer);
 	fileWriteStream.end();
@@ -214,13 +214,21 @@ function writeIntradayData(d, buffer) {
 	logger.debug('%s:', day);
 	logger.debug(buffer);
 	
-	var options = { encoding : 'utf8', flags : 'a' }
-	var fileWriteStream = fs.createWriteStream('./' + dirIntra + '/' + day + '.txt', options);
-	fileWriteStream.on("close", function(){
-		logger.debug('File ./' + dirIntra + '/' + day + '.txt closed.');
+	var path = config.dirIntra + '/' + day + config.outFileExt; 
+	fs.exists(path, function(exists) {
+		// #5: if the file doesn't exist, add the header in front of the buffer and let it roll
+		if(!exists) {
+			logger.debug('New file ' + path + ' to be created, adding the header');
+			buffer = '<ticker>,<per>,<date>,<time>,<open>,<high>,<low>,<close>,<vol>\n' + buffer;
+		}
+		var options = { encoding : 'utf8', flags : 'a' }
+		var fileWriteStream = fs.createWriteStream(path, options);
+		fileWriteStream.on("close", function(){
+			logger.debug('File ' + path + ' closed.');
+		});
+		fileWriteStream.write(buffer);
+		fileWriteStream.end();
 	});
-	fileWriteStream.write(buffer);
-	fileWriteStream.end();
 }
 
 // takes a time in millis and returns time in millis that is set at the beginning of the minute (xx:xx:00.000)
